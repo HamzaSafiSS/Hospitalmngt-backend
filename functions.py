@@ -1,531 +1,347 @@
-import psycopg2
 from fastapi import HTTPException
-from db import get_connection
+from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from models import Patient, Doctor, Appointment
 from schemas import AppointmentUpdate, CancelAppointmentRequest
+from datetime import date, time
 
 # ----------------- Patients -----------------
-def ListPatient():
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM patientsdata")
-        rows = cursor.fetchall()
-        return [
-            {
-                "id": row[0],
-                "name": row[1],
-                "age": row[2],
-                "gender": row[3],
-                "case": row[4],
-                "phone": row[5],
-                "address": row[6]
-            } for row in rows
-        ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+def ListPatient(db: Session):
+    patients = db.query(Patient).all()
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "age": p.age,
+            "gender": p.gender,
+            "case": p.case,
+            "phone": p.phone,
+            "address": p.address
+        } for p in patients
+    ]
 
-
-def AddPatient(Id, name, age, gender, case, phone, address):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        query = """
-            INSERT INTO patientsdata (
-                patient_id, patient_name, patient_age, patient_gender, patient_case, patient_phone, patient_address
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s)
-        """
-        cursor.execute(query, (Id, name, age, gender, case, phone, address))
-        conn.commit()
-        return {"Message": "Patient Added Successfully"}
-    except psycopg2.errors.UniqueViolation:
-        conn.rollback()
+def AddPatient(db: Session, id, name, age, gender, case, phone, address):
+    if db.query(Patient).filter(Patient.id == id).first():
         raise HTTPException(status_code=400, detail="Patient with this ID already exists.")
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+    
+    new_patient = Patient(
+        id=id,
+        name=name,
+        age=age,
+        gender=gender,
+        case=case,
+        phone=phone,
+        address=address
+    )
+    db.add(new_patient)
+    db.commit()
+    return {"Message": "Patient Added Successfully"}
 
+def ViewById(db: Session, patient_ID):
+    patient = db.query(Patient).filter(Patient.id == patient_ID).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not exist")
+    return {
+        "id": patient.id,
+        "name": patient.name,
+        "age": patient.age,
+        "gender": patient.gender,
+        "case": patient.case,
+        "phone": patient.phone,
+        "address": patient.address
+    }
 
-def ViewById(patient_ID):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM patientsdata WHERE patient_id=%s", (patient_ID,))
-        row = cursor.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Patient not exist")
-        return {
-            "id": row[0],
-            "name": row[1],
-            "age": row[2],
-            "gender": row[3],
-            "case": row[4],
-            "phone": row[5],
-            "address": row[6]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+def SearchByName(db: Session, searchTerm):
+    search_pattern = f"%{searchTerm}%"
+    patients = db.query(Patient).filter(
+        or_(
+            Patient.name.ilike(search_pattern),
+             # Assuming ID search is also desired as string, though ID is Integer in ORM.
+             # If ID is strictly integer, casting might be needed or just skipping ID search if searchTerm is not int.
+             # For now, keeping name search primarily. 
+             # If user passes ID as string, we can try to cast or match if we change model to String.
+             # The model defines ID as Integer.
+             # Let's handle name search mainly, or exact ID match if digit.
+        )
+    ).all()
+    
+    # If generic search across textual fields is needed:
+    if searchTerm.isdigit():
+         id_match = db.query(Patient).filter(Patient.id == int(searchTerm)).first()
+         if id_match and id_match not in patients:
+             patients.append(id_match)
 
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "age": p.age,
+            "gender": p.gender,
+            "case": p.case,
+            "phone": p.phone,
+            "address": p.address
+        } for p in patients
+    ]
 
-def SearchByName(searchTerm):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        query = """
-            SELECT * FROM patientsdata 
-            WHERE patient_name ILIKE %s OR patient_id ILIKE %s
-        """
-        like_pattern = f"%{searchTerm}%"
-        cursor.execute(query, (like_pattern, like_pattern))
-        rows = cursor.fetchall()
-        return [
-            {
-                "id": row[0],
-                "name": row[1],
-                "age": row[2],
-                "gender": row[3],
-                "case": row[4],
-                "phone": row[5],
-                "address": row[6]
-            } for row in rows
-        ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+def UpdatePatient(db: Session, PatientName, PatientAge, PatientGender, PatientCase, PatientPhone, PatientAddress, patientID):
+    patient = db.query(Patient).filter(Patient.id == patientID).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient with this ID does not exist")
+    
+    patient.name = PatientName
+    patient.age = PatientAge
+    patient.gender = PatientGender
+    patient.case = PatientCase
+    patient.phone = PatientPhone
+    patient.address = PatientAddress
+    
+    db.commit()
+    return {"Message": "Patient Information Successfully Updated"}
 
-
-def UpdatePatient(PatientName, PatientAge, PatientGender, PatientCase, PatientPhone, PatientAddress, patientID):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM patientsdata WHERE patient_id=%s", (patientID,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Patient with this ID does not exist")
-        query = """
-            UPDATE patientsdata
-            SET patient_name=%s, patient_age=%s, patient_gender=%s,
-                patient_case=%s, patient_phone=%s, patient_address=%s
-            WHERE patient_id = %s
-        """
-        cursor.execute(query, (PatientName, PatientAge, PatientGender, PatientCase, PatientPhone, PatientAddress, patientID))
-        conn.commit()
-        return {"Message": "Patient Information Successfully Updated"}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def DeletePatient(patientid: str):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM patientsdata WHERE patient_id=%s", (patientid,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Patient with entered ID not exist")
-        cursor.execute("DELETE FROM patientsdata WHERE patient_id=%s", (patientid,))
-        conn.commit()
-        return {"Message": "Patient Successfully Deleted"}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+def DeletePatient(db: Session, patientid):
+    patient = db.query(Patient).filter(Patient.id == patientid).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient with entered ID not exist")
+    
+    db.delete(patient)
+    db.commit()
+    return {"Message": "Patient Successfully Deleted"}
 
 
 # ----------------- Doctors -----------------
-def ListDoctors():
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM doctorsdata")
-        rows = cursor.fetchall()
-        return [
-            {
-                "id": row[0],
-                "name": row[1],
-                "age": row[2],
-                "gender": row[3],
-                "speciality": row[4]
-            } for row in rows
-        ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+def ListDoctors(db: Session):
+    doctors = db.query(Doctor).all()
+    return [
+        {
+            "id": d.id,
+            "name": d.name,
+            "age": d.age,
+            "gender": d.gender,
+            "speciality": d.speciality
+        } for d in doctors
+    ]
 
-
-def AddDoctor(doctorId, doctorName, doctorAge, doctorGender, doctorSpeciality):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO doctorsdata(doctor_id, doctor_name, doctor_age, doctor_gender, doctor_speciality) VALUES (%s,%s,%s,%s,%s)",
-            (doctorId, doctorName, doctorAge, doctorGender, doctorSpeciality)
-        )
-        conn.commit()
-        return {"Message": "Doctor Successfully Added."}
-    except psycopg2.errors.UniqueViolation:
-        conn.rollback()
+def AddDoctor(db: Session, doctorId, doctorName, doctorAge, doctorGender, doctorSpeciality):
+    if db.query(Doctor).filter(Doctor.id == doctorId).first():
         raise HTTPException(status_code=400, detail="Doctor with this ID already exists.")
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+    
+    new_doctor = Doctor(
+        id=doctorId,
+        name=doctorName,
+        age=doctorAge,
+        gender=doctorGender,
+        speciality=doctorSpeciality
+    )
+    db.add(new_doctor)
+    db.commit()
+    return {"Message": "Doctor Successfully Added."}
 
+def ViewDoctorById(db: Session, doctorid):
+    doctor = db.query(Doctor).filter(Doctor.id == doctorid).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor with the provided ID not exist")
+    return {
+        "id": doctor.id,
+        "name": doctor.name,
+        "age": doctor.age,
+        "gender": doctor.gender,
+        "speciality": doctor.speciality
+    }
 
-def ViewDoctorById(doctorid):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM doctorsdata WHERE doctor_id=%s", (doctorid,))
-        row = cursor.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Doctor with the provided ID not exist")
-        return {
-            "id": row[0],
-            "name": row[1],
-            "age": row[2],
-            "gender": row[3],
-            "speciality": row[4]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+def SearchDoctorByName(db: Session, searchTerm):
+    search_pattern = f"%{searchTerm}%"
+    doctors = db.query(Doctor).filter(Doctor.name.ilike(search_pattern)).all()
+    if searchTerm.isdigit():
+        id_match = db.query(Doctor).filter(Doctor.id == int(searchTerm)).first()
+        if id_match and id_match not in doctors:
+            doctors.append(id_match)
 
+    return [
+        {
+            "id": d.id,
+            "name": d.name,
+            "age": d.age,
+            "gender": d.gender,
+            "speciality": d.speciality
+        } for d in doctors
+    ]
 
-def SearchDoctorByName(searchTerm):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        query = """
-            SELECT * FROM doctorsdata 
-            WHERE doctor_name ILIKE %s OR doctor_id ILIKE %s
-        """
-        like_pattern = f"%{searchTerm}%"
-        cursor.execute(query, (like_pattern, like_pattern))
-        rows = cursor.fetchall()
-        return [
-            {
-                "id": row[0],
-                "name": row[1],
-                "age": row[2],
-                "gender": row[3],
-                "speciality": row[4]
-            } for row in rows
-        ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+def UpdateDoctor(db: Session, newDoctorName, newDoctorAge, newDoctorGender, newDoctorSpeciality, doctorID):
+    doctor = db.query(Doctor).filter(Doctor.id == doctorID).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor with this ID not exist")
+    
+    doctor.name = newDoctorName
+    doctor.age = newDoctorAge
+    doctor.gender = newDoctorGender
+    doctor.speciality = newDoctorSpeciality
+    
+    db.commit()
+    return {"Message": "Doctor Information Successfully Updated."}
 
-
-def UpdateDoctor(newDoctorName, newDoctorAge, newDoctorGender, newDoctorSpeciality, doctorID):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM doctorsdata WHERE doctor_id=%s", (doctorID,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Doctor with this ID not exist")
-        cursor.execute(
-            "UPDATE doctorsdata SET doctor_name=%s, doctor_age=%s, doctor_gender=%s, doctor_speciality=%s WHERE doctor_id=%s",
-            (newDoctorName, newDoctorAge, newDoctorGender, newDoctorSpeciality, doctorID)
-        )
-        conn.commit()
-        return {"Message": "Doctor Information Successfully Updated."}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
-
-
-def DeleteDoctor(doctorid):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM doctorsdata WHERE doctor_id=%s", (doctorid,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Doctor with entered ID not exist")
-        cursor.execute("DELETE FROM doctorsdata WHERE doctor_id=%s", (doctorid,))
-        conn.commit()
-        return {"Message": "Doctor Successfully Deleted."}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+def DeleteDoctor(db: Session, doctorid):
+    doctor = db.query(Doctor).filter(Doctor.id == doctorid).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor with entered ID not exist")
+    
+    db.delete(doctor)
+    db.commit()
+    return {"Message": "Doctor Successfully Deleted."}
 
 
 # ----------------- Appointments -----------------
-def ListAppointments():
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM appointmentmngt")
-        rows = cursor.fetchall()
-        return [
-            {
-                "id": row[0],
-                "patient_id": row[1],
-                "doctor_id": row[2],
-                "date": row[3],
-                "time": row[4],
-                "status": row[5]
-            } for row in rows
-        ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+def ListAppointments(db: Session):
+    appointments = db.query(Appointment).all()
+    return [
+        {
+            "id": a.id,
+            "patient_id": a.patient_id,
+            "doctor_id": a.doctor_id,
+            "date": a.appointment_date,
+            "time": a.appointment_time,
+            "status": a.status
+        } for a in appointments
+    ]
 
+def BookAppointment(db: Session, patientid, doctorid, date_val, time_val, status):
+    if not db.query(Patient).filter(Patient.id == patientid).first():
+        raise HTTPException(status_code=404, detail="Patient with entered ID not exist")
+    if not db.query(Doctor).filter(Doctor.id == doctorid).first():
+        raise HTTPException(status_code=404, detail="Doctor with entered ID not exist")
 
-def BookAppointment(patientid, doctorid, date, time, status):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM patientsdata WHERE patient_id=%s", (patientid,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Patient with entered ID not exist")
-        cursor.execute("SELECT * FROM doctorsdata WHERE doctor_id=%s", (doctorid,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Doctor with entered ID not exist")
+    # Check for duplicate appointment for the same doctor
+    duplicate = db.query(Appointment).filter(
+        Appointment.doctor_id == doctorid,
+        Appointment.appointment_date == date_val,
+        Appointment.appointment_time == time_val
+    ).first()
+    
+    if duplicate:
+        raise HTTPException(status_code=400, detail="This doctor already has an appointment at this date and time.")
 
-        try:
-            cursor.execute(
-                "INSERT INTO appointmentmngt(patient_id, doctor_id, appointment_date, appointment_time, appointment_status) VALUES(%s,%s,%s,%s,%s)",
-                (patientid, doctorid, date, time, status)
-            )
-        except psycopg2.errors.UniqueViolation:
-            conn.rollback()
-            raise HTTPException(status_code=400, detail="This doctor already has an appointment at this date and time.")
-        conn.commit()
-        return {"Message": "Appointment Successfully Booked."}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+    new_appointment = Appointment(
+        patient_id=patientid,
+        doctor_id=doctorid,
+        appointment_date=date_val,
+        appointment_time=time_val,
+        status=status
+    )
+    db.add(new_appointment)
+    db.commit()
+    return {"Message": "Appointment Successfully Booked."}
 
+def ViewAppointmentByID(db: Session, appointment_id):
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not exist")
+    return {
+        "id": appointment.id,
+        "patient_id": appointment.patient_id,
+        "doctor_id": appointment.doctor_id,
+        "date": appointment.appointment_date,
+        "time": appointment.appointment_time,
+        "status": appointment.status
+    }
 
-def ViewAppointmentByID(appointment_id):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM appointmentmngt WHERE appointment_id=%s", (appointment_id,))
-        row = cursor.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Appointment not exist")
-        return {
-            "id": row[0],
-            "patient_id": row[1],
-            "doctor_id": row[2],
-            "date": row[3],
-            "time": row[4],
-            "status": row[5]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+def ViewAppointmentsByPatientID(db: Session, patientid):
+    appointments = db.query(Appointment).filter(Appointment.patient_id == patientid).all()
+    if not appointments:
+        raise HTTPException(status_code=404, detail="Appointment with entered Patient ID not exist.")
+    return [
+        {
+            "id": a.id,
+            "patient_id": a.patient_id,
+            "doctor_id": a.doctor_id,
+            "date": a.appointment_date,
+            "time": a.appointment_time,
+            "status": a.status
+        } for a in appointments
+    ]
 
+def ViewAppointmentsByDoctorID(db: Session, doctorid):
+    appointments = db.query(Appointment).filter(Appointment.doctor_id == doctorid).all()
+    if not appointments:
+        raise HTTPException(status_code=404, detail="Appointment with entered Doctor ID not exist.")
+    return [
+        {
+            "id": a.id,
+            "patient_id": a.patient_id,
+            "doctor_id": a.doctor_id,
+            "date": a.appointment_date,
+            "time": a.appointment_time,
+            "status": a.status
+        } for a in appointments
+    ]
 
-def ViewAppointmentsByPatientID(patientid):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM appointmentmngt WHERE patient_id=%s", (patientid,))
-        rows = cursor.fetchall()
-        if not rows:
-            raise HTTPException(status_code=404, detail="Appointment with entered Patient ID not exist.")
-        return [
-            {
-                "id": row[0],
-                "patient_id": row[1],
-                "doctor_id": row[2],
-                "date": row[3],
-                "time": row[4],
-                "status": row[5]
-            } for row in rows
-        ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+def UpdateAppointment(db: Session, patientid, number, data: AppointmentUpdate):
+    appointments = db.query(Appointment).filter(Appointment.patient_id == patientid).all()
+    if not appointments:
+        raise HTTPException(status_code=404, detail="Patient with entered ID does not exist or has no Appointment.")
+    
+    if number < 1 or number > len(appointments):
+        raise HTTPException(status_code=400, detail="Invalid appointment number.")
 
+    selected_app = appointments[number - 1]
 
-def ViewAppointmentsByDoctorID(doctorid):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM appointmentmngt WHERE doctor_id=%s", (doctorid,))
-        rows = cursor.fetchall()
-        if not rows:
-            raise HTTPException(status_code=404, detail="Appointment with entered Doctor ID not exist.")
-        return [
-            {
-                "id": row[0],
-                "patient_id": row[1],
-                "doctor_id": row[2],
-                "date": row[3],
-                "time": row[4],
-                "status": row[5]
-            } for row in rows
-        ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+    # Check for duplicate appointment for the same doctor, excluding current appointment
+    duplicate = db.query(Appointment).filter(
+        Appointment.doctor_id == selected_app.doctor_id,
+        Appointment.appointment_date == data.date,
+        Appointment.appointment_time == data.time,
+        Appointment.id != selected_app.id
+    ).first()
 
+    if duplicate:
+        raise HTTPException(status_code=400, detail="This doctor already has an appointment at this date and time.")
 
-def UpdateAppointment(patientid, number, data: AppointmentUpdate):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT appointment_id FROM appointmentmngt WHERE patient_id=%s", (patientid,))
-        appointments = cursor.fetchall()
-        if not appointments:
-            raise HTTPException(status_code=404, detail="Patient with entered ID does not exist or has no Appointment.")
-        if number < 1 or number > len(appointments):
-            raise HTTPException(status_code=400, detail="Invalid appointment number.")
+    selected_app.appointment_date = data.date
+    selected_app.appointment_time = data.time
+    selected_app.status = data.status
+    
+    db.commit()
+    return {"Message": "Appointment Successfully Updated."}
 
-        selectedAppID = appointments[number - 1][0]
+def CancelAppointment(db: Session, request: CancelAppointmentRequest):
+    appointments = db.query(Appointment).filter(Appointment.patient_id == request.patient_id).all()
+    if not appointments:
+        raise HTTPException(status_code=404, detail=f"Patient ID {request.patient_id} does not exist or has no appointments.")
+    
+    if request.appointment_number < 1 or request.appointment_number > len(appointments):
+        raise HTTPException(status_code=400, detail="Invalid appointment number.")
 
-        # Check for duplicate appointment for the same doctor
-        cursor.execute(
-            """
-            SELECT appointment_id FROM appointmentmngt
-            WHERE doctor_id = (SELECT doctor_id FROM appointmentmngt WHERE appointment_id=%s)
-            AND appointment_date = %s
-            AND appointment_time = %s
-            AND appointment_id != %s
-            """,
-            (selectedAppID, data.date, data.time, selectedAppID)
-        )
-        duplicate = cursor.fetchone()
-        if duplicate:
-            raise HTTPException(status_code=400, detail="This doctor already has an appointment at this date and time.")
+    selected_app = appointments[request.appointment_number - 1]
+    db.delete(selected_app)
+    db.commit()
+    return {"Message": "Appointment Successfully Deleted."}
 
-        cursor.execute(
-            """
-            UPDATE appointmentmngt
-            SET appointment_date=%s, appointment_time=%s, appointment_status=%s
-            WHERE appointment_id=%s
-            """,
-            (data.date, data.time, data.status, selectedAppID)
-        )
-        conn.commit()
-        return {"Message": "Appointment Successfully Updated."}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+def DeleteAppointmentByID(db: Session, appointment_id: int):
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not exist")
+    
+    db.delete(appointment)
+    db.commit()
+    return {"Message": "Appointment Successfully Deleted"}
 
+def UpdateAppointmentByID(db: Session, appointment_id: int, data: AppointmentUpdate):
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not exist")
 
-def CancelAppointment(request: CancelAppointmentRequest):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM appointmentmngt WHERE patient_id=%s", (request.patient_id,))
-        patient_appointments = cursor.fetchall()
-        if not patient_appointments:
-            raise HTTPException(status_code=404, detail=f"Patient ID {request.patient_id} does not exist or has no appointments.")
-        if request.appointment_number < 1 or request.appointment_number > len(patient_appointments):
-            raise HTTPException(status_code=400, detail="Invalid appointment number.")
+    # Check for duplicate
+    duplicate = db.query(Appointment).filter(
+        Appointment.doctor_id == appointment.doctor_id,
+        Appointment.appointment_date == data.date,
+        Appointment.appointment_time == data.time,
+        Appointment.id != appointment_id
+    ).first()
 
-        selectedAppID = patient_appointments[request.appointment_number - 1][0]
-        cursor.execute("DELETE FROM appointmentmngt WHERE appointment_id=%s", (selectedAppID,))
-        conn.commit()
-        return {"Message": "Appointment Successfully Deleted."}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
-def DeleteAppointmentByID(appointment_id: int):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM appointmentmngt WHERE appointment_id=%s", (appointment_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Appointment not exist")
-        cursor.execute("DELETE FROM appointmentmngt WHERE appointment_id=%s", (appointment_id,))
-        conn.commit()
-        return {"Message": "Appointment Successfully Deleted"}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+    if duplicate:
+        raise HTTPException(status_code=400, detail="This doctor already has an appointment at this date and time.")
 
-
-def UpdateAppointmentByID(appointment_id: int, data: AppointmentUpdate):
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        # Check if exists
-        cursor.execute("SELECT * FROM appointmentmngt WHERE appointment_id=%s", (appointment_id,))
-        if not cursor.fetchone():
-            raise HTTPException(status_code=404, detail="Appointment not exist")
-
-        # Check for duplicate for SAME doctor (not including this appointment)
-        cursor.execute(
-            """
-            SELECT appointment_id FROM appointmentmngt
-            WHERE doctor_id = (SELECT doctor_id FROM appointmentmngt WHERE appointment_id=%s)
-            AND appointment_date = %s
-            AND appointment_time = %s
-            AND appointment_id != %s
-            """,
-            (appointment_id, data.date, data.time, appointment_id)
-        )
-        if cursor.fetchone():
-            raise HTTPException(status_code=400, detail="This doctor already has an appointment at this date and time.")
-
-        cursor.execute(
-            """
-            UPDATE appointmentmngt
-            SET appointment_date=%s, appointment_time=%s, appointment_status=%s
-            WHERE appointment_id=%s
-            """,
-            (data.date, data.time, data.status, appointment_id)
-        )
-        conn.commit()
-        return {"Message": "Appointment Successfully Updated"}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cursor.close()
-        conn.close()
+    appointment.appointment_date = data.date
+    appointment.appointment_time = data.time
+    appointment.status = data.status
+    
+    db.commit()
+    return {"Message": "Appointment Successfully Updated"}
