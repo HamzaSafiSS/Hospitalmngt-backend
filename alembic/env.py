@@ -1,5 +1,6 @@
 from logging.config import fileConfig
 from db import Base
+from models import Patient, Doctor, Appointment # Import models so Base.metadata can find them
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
