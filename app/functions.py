@@ -1,8 +1,8 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from models import Patient, Doctor, Appointment
-from schemas import AppointmentUpdate, CancelAppointmentRequest
+from app.models import Patient, Doctor, Appointment
+from app.schemas import AppointmentUpdate, CancelAppointmentRequest
 from datetime import date, time
 
 # ----------------- Patients -----------------

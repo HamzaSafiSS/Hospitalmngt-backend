@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Date, Time, ForeignKey
 from sqlalchemy.orm import relationship
-from db import Base
+from app.db import Base
 
 class Patient(Base):
     __tablename__ = "patients"

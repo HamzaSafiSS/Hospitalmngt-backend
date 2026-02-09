@@ -4,7 +4,7 @@ from typing import Annotated
 from datetime import date, time
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from db import get_db
+from app.db import get_db
 
 app = FastAPI(title="Hospital Management API")
 
@@ -21,13 +21,13 @@ app.add_middleware(
 )
 
 # Import functions
-from functions import (
+from app.functions import (
     ListPatient, AddPatient, ViewById, SearchByName, UpdatePatient, DeletePatient,
     ListDoctors, AddDoctor, ViewDoctorById, SearchDoctorByName, UpdateDoctor, DeleteDoctor,
     ListAppointments, BookAppointment, ViewAppointmentsByPatientID, ViewAppointmentsByDoctorID,
     UpdateAppointment, CancelAppointment, DeleteAppointmentByID, UpdateAppointmentByID
 )
-from schemas import AppointmentUpdate, CancelAppointmentRequest
+from app.schemas import AppointmentUpdate, CancelAppointmentRequest
 
 # ----------------- Home -----------------
 @app.get("/")
