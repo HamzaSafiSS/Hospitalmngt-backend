@@ -87,7 +87,7 @@ def UpdatePatient(db: Session, PatientName, PatientAge, PatientGender, PatientCa
     patient = db.query(Patient).filter(Patient.id == patientID).first()
     if not patient:
         raise HTTPException(status_code=404, detail="Patient with this ID does not exist")
-    
+        
     patient.name = PatientName
     patient.age = PatientAge
     patient.gender = PatientGender
