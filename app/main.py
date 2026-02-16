@@ -1,10 +1,14 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException 
 from pydantic import BaseModel, Field
 from typing import Annotated
 from datetime import date, time
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.db import get_db
+from sqlalchemy.orm import Session
+from models import User
+from auth import hash_password, verify_password, create_access_token 
+from pydantic import BaseModel
 
 app = FastAPI(title="Hospital Management API")
 
@@ -150,3 +154,39 @@ def cancel_appointment(request: CancelAppointmentRequest, db: Session = Depends(
 @app.get("/test")
 def test():
     return {"status": "ok"}
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+@app.post("/signup")
+def signup(user: UserCreate, db: Session = Depends(get_db)):
+    existing_user = db.query(User).filter(User.email == user.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    new_user = User(
+        email=user.email,
+        password=hash_password(user.password),
+    )
+
+    db.add(new_user) # Here tracked by the SQLAlchemy Session it means it is still at pending level.
+    db.commit() # lushes all pending changes to the database and permanently saves them
+    db.refresh(new_user) # reloads the object from the database to get the latest data
+
+    return {"message": "User created successfully"}
+
+@app.post("/login")
+def login(user: UserLogin, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.email == user.email).first()
+
+    if not db_user or not verify_password(user.password, db_user.password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    access_token = create_access_token({"user_id": db_user.id})
+
+    return {"access_token": access_token, "token_type": "bearer"}
