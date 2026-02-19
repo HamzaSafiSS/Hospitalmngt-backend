@@ -16,6 +16,12 @@ from app.auth import hash_password
 from app.models import User, RoleEnum
 from app.db import SessionLocal
 from dotenv import load_dotenv
+
+from fastapi import APIRouter, Query
+from typing import List
+from app.user import UserOut
+from app.auth import require_role
+from app.models import User
 # Import functions
 from app.functions import (
     ListPatient, AddPatient, ViewById, SearchByName, UpdatePatient, DeletePatient,
@@ -24,7 +30,7 @@ from app.functions import (
     UpdateAppointment, CancelAppointment, DeleteAppointmentByID, UpdateAppointmentByID
 )
 from app.schemas import AppointmentUpdate, CancelAppointmentRequest
-from auth import require_role
+from app.auth import require_role
 
 
 load_dotenv()
@@ -71,6 +77,25 @@ def create_default_admin():
 @app.get("/")
 def home():
     return {"message": "Hospital Management API is running"}
+
+router = APIRouter(prefix="/admin", tags=["admin"])
+
+@router.get("/users", response_model=List[UserOut])
+def get_all_users(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("ADMIN"))
+):
+    users = (
+        db.query(User)
+        .order_by(User.id)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    
+    return users
 
 # ----------------- Admin -----------------
 

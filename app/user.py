@@ -1,6 +1,6 @@
 # schemas/user.py
 from pydantic import BaseModel, EmailStr
-from py.models import RoleEnum   # or wherever your enum lives
+from app.models import RoleEnum   # or wherever your enum lives
 
 class UserOut(BaseModel):
     id: int
