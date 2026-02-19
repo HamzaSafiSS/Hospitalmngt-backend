@@ -1,17 +1,20 @@
-from sqlalchemy import Column, Integer, String, Date, Time, ForeignKey
+from sqlalchemy import Column, Integer, String, Date, Time, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 from app.db import Base
+import enum
 
-class User(Base): #"Base is a registry class that marks my Python classes as database tables
-    # Simply base mark this class (User) as a database table
-    #Without Base, SQLAlchemy wouldn't know which Python classes should become database tables."
+class RoleEnum(str, enum.Enum):
+    ADMIN = "ADMIN"
+    DOCTOR = "DOCTOR"
+    PATIENT = "PATIENT"
+
+class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, index=True)
-    password = Column(String(255))
-    role = Column(String, default="PATIENT")
-
+    email = Column(String, unique=True, index=True)
+    password = Column(String)
+    role = Column(Enum(RoleEnum), default=RoleEnum.PATIENT)
 class Patient(Base):
     __tablename__ = "patients"
 

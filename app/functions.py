@@ -94,7 +94,6 @@ def UpdatePatient(db: Session, PatientName, PatientAge, PatientGender, PatientCa
     patient.case = PatientCase
     patient.phone = PatientPhone
     patient.address = PatientAddress
-    
     db.commit()
     return {"Message": "Patient Information Successfully Updated"}
 
@@ -120,21 +119,6 @@ def ListDoctors(db: Session):
             "speciality": d.speciality
         } for d in doctors
     ]
-
-def AddDoctor(db: Session, doctorId, doctorName, doctorAge, doctorGender, doctorSpeciality):
-    if db.query(Doctor).filter(Doctor.id == doctorId).first():
-        raise HTTPException(status_code=400, detail="Doctor with this ID already exists.")
-    
-    new_doctor = Doctor(
-        id=doctorId,
-        name=doctorName,
-        age=doctorAge,
-        gender=doctorGender,
-        speciality=doctorSpeciality
-    )
-    db.add(new_doctor)
-    db.commit()
-    return {"Message": "Doctor Successfully Added."}
 
 def ViewDoctorById(db: Session, doctorid):
     doctor = db.query(Doctor).filter(Doctor.id == doctorid).first()

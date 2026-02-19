@@ -1,42 +1,94 @@
+import os
 from fastapi import FastAPI, Depends, HTTPException 
 from pydantic import BaseModel, Field
 from typing import Annotated
 from datetime import date, time
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from app.db import engine         
+from app.models import Base
 from app.db import get_db
 from sqlalchemy.orm import Session
-from models import User
-from auth import hash_password, verify_password, create_access_token 
+from app.models import User
+from app.auth import hash_password, verify_password, create_access_token 
 from pydantic import BaseModel
+from app.auth import hash_password
+from app.models import User, RoleEnum
+from app.db import SessionLocal
+from dotenv import load_dotenv
+# Import functions
+from app.functions import (
+    ListPatient, AddPatient, ViewById, SearchByName, UpdatePatient, DeletePatient,
+    ListDoctors, ViewDoctorById, SearchDoctorByName, UpdateDoctor, DeleteDoctor,
+    ListAppointments, BookAppointment, ViewAppointmentsByPatientID, ViewAppointmentsByDoctorID,
+    UpdateAppointment, CancelAppointment, DeleteAppointmentByID, UpdateAppointmentByID
+)
+from app.schemas import AppointmentUpdate, CancelAppointmentRequest
+from auth import require_role
+
+
+load_dotenv()
 
 app = FastAPI(title="Hospital Management API")
 
+Base.metadata.create_all(bind=engine)
+
+@app.on_event("startup")
+async def startup_event():
+    create_default_admin()
+    
 origins = [
-    "http://localhost:5173",  # your frontend URL
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,       # allow requests from this origin
+    allow_origins=origins,       # allow requests from these origins
     allow_credentials=True,
     allow_methods=["*"],         # allow GET, POST, PUT, DELETE
     allow_headers=["*"],
 )
 
-# Import functions
-from app.functions import (
-    ListPatient, AddPatient, ViewById, SearchByName, UpdatePatient, DeletePatient,
-    ListDoctors, AddDoctor, ViewDoctorById, SearchDoctorByName, UpdateDoctor, DeleteDoctor,
-    ListAppointments, BookAppointment, ViewAppointmentsByPatientID, ViewAppointmentsByDoctorID,
-    UpdateAppointment, CancelAppointment, DeleteAppointmentByID, UpdateAppointmentByID
-)
-from app.schemas import AppointmentUpdate, CancelAppointmentRequest
+def create_default_admin():
+    db = SessionLocal()
+    admin_email = os.getenv("ADMIN_EMAIL")
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    existing_admin = db.query(User).filter(User.email == admin_email).first()
+
+    if not existing_admin:
+        new_admin = User(
+            email=admin_email,
+            password=hash_password(admin_password),
+            role=RoleEnum.ADMIN
+        )
+        db.add(new_admin)
+        db.commit()
+
+    db.close()
 
 # ----------------- Home -----------------
 @app.get("/")
 def home():
     return {"message": "Hospital Management API is running"}
+
+# ----------------- Admin -----------------
+
+@app.post("/admin/create-admin")
+def create_admin(
+    user: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("ADMIN"))
+):
+    new_admin = User(
+        email=user.email,
+        password=hash_password(user.password),
+        role=RoleEnum.ADMIN
+    )
+    db.add(new_admin)
+    db.commit()
+    return {"message": "Admin created"}
+
 
 # ----------------- Patients -----------------
 @app.get("/patients")
@@ -86,6 +138,21 @@ class Doctor(BaseModel):
     age: Annotated[int, Field(ge=25, le=300)]
     gender: Annotated[str, Field(pattern="^(Male|Female|Other)$")]
     speciality: str
+
+@app.post("/admin/create-doctor")
+def create_doctor(
+    user: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("ADMIN"))
+):
+    new_doctor = User(
+        email=user.email,
+        password=hash_password(user.password),
+        role=RoleEnum.DOCTOR
+    )
+    db.add(new_doctor)
+    db.commit()
+    return {"message": "Doctor created"}
 
 @app.post("/doctors")
 def add_doctor(doctor: Doctor, db: Session = Depends(get_db)):
