@@ -32,7 +32,6 @@ from app.functions import (
 from app.schemas import AppointmentUpdate, CancelAppointmentRequest
 from app.auth import require_role
 
-
 load_dotenv()
 
 app = FastAPI(title="Hospital Management API")
