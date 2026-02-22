@@ -113,6 +113,21 @@ def create_admin(
     db.commit()
     return {"message": "Admin created"}
 
+@app.post("/admin/create-doctor")
+def create_doctor(
+    user: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("ADMIN"))
+):
+    new_doctor = User(
+        email=user.email,
+        password=hash_password(user.password),
+        role=RoleEnum.DOCTOR
+    )
+    db.add(new_doctor)
+    db.commit()
+    return {"message": "Doctor created"}
+
 
 # ----------------- Patients -----------------
 @app.get("/patients")
@@ -162,21 +177,6 @@ class Doctor(BaseModel):
     age: Annotated[int, Field(ge=25, le=300)]
     gender: Annotated[str, Field(pattern="^(Male|Female|Other)$")]
     speciality: str
-
-@app.post("/admin/create-doctor")
-def create_doctor(
-    user: UserCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("ADMIN"))
-):
-    new_doctor = User(
-        email=user.email,
-        password=hash_password(user.password),
-        role=RoleEnum.DOCTOR
-    )
-    db.add(new_doctor)
-    db.commit()
-    return {"message": "Doctor created"}
 
 @app.post("/doctors")
 def add_doctor(doctor: Doctor, db: Session = Depends(get_db)):
