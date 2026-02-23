@@ -31,6 +31,8 @@ from app.functions import (
 )
 from app.schemas import AppointmentUpdate, CancelAppointmentRequest
 from app.auth import require_role
+from app.schemas import UserCreate
+from app.schemas import UserLogin
 
 load_dotenv()
 
@@ -245,14 +247,6 @@ def cancel_appointment(request: CancelAppointmentRequest, db: Session = Depends(
 @app.get("/test")
 def test():
     return {"status": "ok"}
-
-class UserCreate(BaseModel):
-    email: str
-    password: str
-
-class UserLogin(BaseModel):
-    email: str
-    password: str
 
 @app.post("/signup")
 def signup(user: UserCreate, db: Session = Depends(get_db)):
